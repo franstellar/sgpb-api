@@ -84,6 +84,7 @@ public class DataSeeder {
                 p1.setPrice(new BigDecimal("45.00"));
                 p1.setStockLimit(300);
                 p1.setIsActive(true);
+                p1.setImageUrl("https://images.unsplash.com/photo-1534080564583-6be75777b70a?auto=format&fit=crop&w=800&q=80");
                 p1 = productRepository.save(p1);
 
                 Product p2 = new Product();
@@ -93,6 +94,7 @@ public class DataSeeder {
                 p2.setPrice(new BigDecimal("120.00"));
                 p2.setStockLimit(150);
                 p2.setIsActive(true);
+                p2.setImageUrl("https://images.unsplash.com/photo-1515443961218-a51367888e4b?auto=format&fit=crop&w=800&q=80");
                 p2 = productRepository.save(p2);
 
                 Product p3 = new Product();
@@ -102,6 +104,7 @@ public class DataSeeder {
                 p3.setPrice(new BigDecimal("260.00"));
                 p3.setStockLimit(50);
                 p3.setIsActive(true);
+                p3.setImageUrl("https://images.unsplash.com/photo-1623961990059-28356e226a77?auto=format&fit=crop&w=800&q=80");
                 p3 = productRepository.save(p3);
 
                 // 5. Criar 1º Lote e vincular produtos

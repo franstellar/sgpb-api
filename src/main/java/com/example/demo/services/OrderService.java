@@ -185,6 +185,10 @@ public class OrderService {
 
             recordHistory(order, "PENDING", "EXPIRED", null, "15-minute reservation expired automatically");
             System.out.println("⏰ Pedido expirado e estoque devolvido: " + order.getOrderNumber());
+
+            String pixPayload = "00020126580014BR.GOV.BCB.PIX0136abadeus-paelito@pix.org.br5204000053039865406" 
+                + order.getTotalAmount().toString() + "5802BR5915ABADEUS PAELITO6008CRICIUMA62070503***6304ABCD";
+                order.setPixCopyPaste(pixPayload);
         }
     }
 

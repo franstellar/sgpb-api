@@ -55,4 +55,22 @@ public class EventController {
     public List<Batch> listBatchesByEvent(@PathVariable Long eventId) {
         return batchRepository.findByEventId(eventId);
     }
+
+    // Rota Admin: Criar novo lote vinculado ao evento (Ex: 2º Lote)
+    @PostMapping("/{eventId}/batches")
+    public Batch createBatch(@PathVariable Long eventId, @RequestBody Batch batch) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        batch.setEvent(event);
+        return batchRepository.save(batch);
+    }
+
+    // Rota Admin: Pausar/Ativar vendas de um produto ou ajustar estoque
+    @PatchMapping("/products/{productId}/toggle")
+    public Product toggleProductStatus(@PathVariable Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Produto não encontrado."));
+        product.setActive(!product.getActive());
+        return productRepository.save(product);
+    }
 }

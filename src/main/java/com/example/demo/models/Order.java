@@ -38,4 +38,7 @@ public class Order extends Auditable {
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+
+    @Column(length = 500)
+    private String pixCopyPaste;
 }

@@ -33,4 +33,10 @@ public class Product extends Auditable {
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    @Column(length = 500)
+    private String imageUrl;
+
+    @Column(nullable = false)
+    private Boolean active = true;
 }
