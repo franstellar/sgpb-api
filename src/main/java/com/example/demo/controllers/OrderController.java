@@ -3,6 +3,7 @@ package com.example.demo.controllers;
 import com.example.demo.models.Order;
 import com.example.demo.models.OrderItem;
 import com.example.demo.models.Payment;
+import com.example.demo.models.PickupReceipt;
 import com.example.demo.repositories.OrderItemRepository;
 import com.example.demo.repositories.OrderRepository;
 import com.example.demo.repositories.PickupValidationRepository;
@@ -43,6 +44,10 @@ public class OrderController {
     ) {}
 
     public record PaymentWebhookRequest(String externalId, String method, String provider) {}
+
+    public record PickupRequest(String orderNumber, Long volunteerUserId, String validationMethod) {}
+
+    public record AdminOrderActionRequest(Long adminUserId, String justification) {}
 
     @GetMapping
     public List<Order> listAllOrders(@RequestParam(required = false) Long userId) {
@@ -87,13 +92,62 @@ public class OrderController {
         }
     }
 
-    // Painel de Indicadores (Seção 4 e 7 do PDF)
+    // Rota Voluntário/Admin: Validar retirada por QR Code ou código
+    @PostMapping("/pickup")
+    public ResponseEntity<?> validatePickup(@RequestBody PickupRequest request) {
+        try {
+            PickupReceipt receipt = orderService.validatePickup(
+                    request.orderNumber(),
+                    request.volunteerUserId(),
+                    request.validationMethod()
+            );
+            return ResponseEntity.ok(receipt);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Rota Admin: Cancelar pedido pendente e devolver unidades ao estoque
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<?> cancelOrder(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) AdminOrderActionRequest request
+    ) {
+        try {
+            Long adminId = request != null ? request.adminUserId() : null;
+            String justification = request != null ? request.justification() : null;
+            Order order = orderService.cancelOrder(orderId, adminId, justification);
+            return ResponseEntity.ok(order);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Rota Admin: Reembolsar pedido pago com justificativa obrigatória
+    @PostMapping("/{orderId}/refund")
+    public ResponseEntity<?> refundOrder(
+            @PathVariable Long orderId,
+            @RequestBody AdminOrderActionRequest request
+    ) {
+        try {
+            Order order = orderService.refundOrder(
+                    orderId,
+                    request.adminUserId(),
+                    request.justification()
+            );
+            return ResponseEntity.ok(order);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Painel de Indicadores (Dashboard)
     @GetMapping("/dashboard")
     public Map<String, Object> getDashboardMetrics() {
         List<Order> allOrders = orderRepository.findAll();
 
         long paidOrdersCount = allOrders.stream()
-                .filter(o -> "PAID".equals(o.getStatus()))
+                .filter(o -> "PAID".equals(o.getStatus()) || "PICKED_UP".equals(o.getStatus()))
                 .count();
 
         long pendingOrdersCount = allOrders.stream()
@@ -101,12 +155,12 @@ public class OrderController {
                 .count();
 
         BigDecimal confirmedRevenue = allOrders.stream()
-                .filter(o -> "PAID".equals(o.getStatus()))
+                .filter(o -> "PAID".equals(o.getStatus()) || "PICKED_UP".equals(o.getStatus()))
                 .map(Order::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         int totalUnitsSold = allOrders.stream()
-                .filter(o -> "PAID".equals(o.getStatus()))
+                .filter(o -> "PAID".equals(o.getStatus()) || "PICKED_UP".equals(o.getStatus()))
                 .flatMap(o -> orderItemRepository.findByOrderId(o.getId()).stream())
                 .mapToInt(OrderItem::getQuantity)
                 .sum();

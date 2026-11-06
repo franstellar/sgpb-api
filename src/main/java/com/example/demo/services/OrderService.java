@@ -48,7 +48,7 @@ public class OrderService {
 
     public record OrderItemInput(Long productId, Integer quantity) {}
 
-    // 1. Criar pedido e reservar estoque por 15 minutos (NF2.1)
+    // 1. Criar pedido, reservar estoque por 15 min (NF2.1) e gerar Pix Copia e Cola
     @Transactional
     public Order createOrder(Long eventId, Long userId, String origin, List<OrderItemInput> items) {
         Event event = eventRepository.findById(eventId)
@@ -76,7 +76,6 @@ public class OrderService {
                 throw new RuntimeException("Insufficient stock for product: " + product.getName());
             }
 
-            // Deduz do estoque disponível enquanto está reservado
             product.setStockLimit(product.getStockLimit() - itemInput.quantity());
             productRepository.save(product);
 
@@ -93,6 +92,9 @@ public class OrderService {
         }
 
         order.setTotalAmount(total);
+        String pixPayload = "00020126580014BR.GOV.BCB.PIX0136abadeus-paelito@pix.org.br5204000053039865406"
+                + total.toString() + "5802BR5915ABADEUS PAELITO6008CRICIUMA62070503***6304ABCD";
+        order.setPixCopyPaste(pixPayload);
         order = orderRepository.save(order);
 
         recordHistory(order, null, "PENDING", user, "Order created with 15m stock reservation");
@@ -102,7 +104,6 @@ public class OrderService {
     // 2. Confirmar pagamento de forma idempotente (NF1.2)
     @Transactional
     public Payment confirmPayment(Long orderId, String externalId, String method, String provider) {
-        // Se o webhook já enviou esse externalId antes, retorna o pagamento existente sem duplicar
         var existingPayment = paymentRepository.findByExternalId(externalId);
         if (existingPayment.isPresent()) {
             return existingPayment.get();
@@ -163,11 +164,63 @@ public class OrderService {
         receipt.setIssuedAt(LocalDateTime.now());
         receipt = pickupReceiptRepository.save(receipt);
 
+        order.setStatus("PICKED_UP");
+        orderRepository.save(order);
+
         recordHistory(order, "PAID", "PICKED_UP", volunteer, "Picked up via " + validation.getValidationMethod());
         return receipt;
     }
 
-    // 4. Rotina automática: roda a cada 60s e devolve ao estoque pedidos que passaram de 15 min
+    // 4. Cancelar pedido pendente pelo Admin e devolver estoque
+    @Transactional
+    public Order cancelOrder(Long orderId, Long adminUserId, String justification) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!"PENDING".equals(order.getStatus())) {
+            throw new RuntimeException("Only PENDING orders can be cancelled. Current status: " + order.getStatus());
+        }
+
+        User admin = adminUserId != null ? userRepository.findById(adminUserId).orElse(null) : null;
+
+        restoreStock(order.getId());
+
+        String oldStatus = order.getStatus();
+        order.setStatus("CANCELLED");
+        order = orderRepository.save(order);
+
+        recordHistory(order, oldStatus, "CANCELLED", admin,
+                justification != null ? justification : "Cancelled by administrator");
+        return order;
+    }
+
+    // 5. Reembolsar pedido pago com justificativa e devolver estoque
+    @Transactional
+    public Order refundOrder(Long orderId, Long adminUserId, String justification) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!"PAID".equals(order.getStatus())) {
+            throw new RuntimeException("Only PAID orders can be refunded. Current status: " + order.getStatus());
+        }
+
+        if (justification == null || justification.isBlank()) {
+            throw new RuntimeException("Justification is required for refunds");
+        }
+
+        User admin = adminUserId != null ? userRepository.findById(adminUserId).orElse(null) : null;
+
+        restoreStock(order.getId());
+
+        String oldStatus = order.getStatus();
+        order.setStatus("REFUNDED");
+        order = orderRepository.save(order);
+
+        recordHistory(order, oldStatus, "REFUNDED", admin, justification);
+        return order;
+    }
+
+    // 6. Rotina automática: roda a cada 60s e devolve ao estoque pedidos que passaram de 15 min
     @Scheduled(fixedRate = 60000)
     @Transactional
     public void expirePendingOrders() {
@@ -176,19 +229,19 @@ public class OrderService {
             order.setStatus("EXPIRED");
             orderRepository.save(order);
 
-            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
-            for (OrderItem item : items) {
-                Product product = item.getProduct();
-                product.setStockLimit(product.getStockLimit() + item.getQuantity());
-                productRepository.save(product);
-            }
+            restoreStock(order.getId());
 
             recordHistory(order, "PENDING", "EXPIRED", null, "15-minute reservation expired automatically");
             System.out.println("⏰ Pedido expirado e estoque devolvido: " + order.getOrderNumber());
+        }
+    }
 
-            String pixPayload = "00020126580014BR.GOV.BCB.PIX0136abadeus-paelito@pix.org.br5204000053039865406" 
-                + order.getTotalAmount().toString() + "5802BR5915ABADEUS PAELITO6008CRICIUMA62070503***6304ABCD";
-                order.setPixCopyPaste(pixPayload);
+    private void restoreStock(Long orderId) {
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        for (OrderItem item : items) {
+            Product product = item.getProduct();
+            product.setStockLimit(product.getStockLimit() + item.getQuantity());
+            productRepository.save(product);
         }
     }
 
