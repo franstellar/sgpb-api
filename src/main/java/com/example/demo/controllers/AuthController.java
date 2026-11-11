@@ -166,7 +166,7 @@ public class AuthController {
 
     // 4. Listar usuários da equipe para o painel do Admin
     @GetMapping("/staff")
-    public List> listStaff() {
+    public List<Map<String, Object>> listStaff() {
         return userRepository.findAll().stream()
                 .filter(u -> !"BUYER".equals(u.getRole().getName()))
                 .map(u -> Map.<String, Object>of(
