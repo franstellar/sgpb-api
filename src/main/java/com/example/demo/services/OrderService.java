@@ -56,11 +56,17 @@ public class OrderService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // Se o pedido foi criado por um usuário PARTNER, marca a origem como PARTNER automaticamente
+        String resolvedOrigin = origin != null ? origin : "APP";
+        if (user.getRole() != null && "PARTNER".equals(user.getRole().getName())) {
+            resolvedOrigin = "PARTNER";
+        }
+
         Order order = new Order();
         order.setEvent(event);
         order.setUser(user);
         order.setOrderNumber("PAEL-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
-        order.setOrigin(origin != null ? origin : "APP");
+        order.setOrigin(resolvedOrigin);
         order.setStatus("PENDING");
         order.setTotalAmount(BigDecimal.ZERO);
         order.setExpiresAt(LocalDateTime.now().plusMinutes(15));
@@ -134,7 +140,7 @@ public class OrderService {
         return payment;
     }
 
-    // 3. Validar retirada única por QR Code ou código manual e gerar comprovante
+    // 3. Validar retirada única por QR Code ou código manual (Apenas VOLUNTEER ou ADMIN)
     @Transactional
     public PickupReceipt validatePickup(String orderNumber, Long volunteerUserId, String validationMethod) {
         Order order = orderRepository.findByOrderNumber(orderNumber)
@@ -148,12 +154,17 @@ public class OrderService {
             throw new RuntimeException("Order has already been picked up!");
         }
 
-        User volunteer = userRepository.findById(volunteerUserId)
-                .orElseThrow(() -> new RuntimeException("Volunteer user not found"));
+        User staff = userRepository.findById(volunteerUserId)
+                .orElseThrow(() -> new RuntimeException("Staff user not found"));
+
+        String roleName = staff.getRole() != null ? staff.getRole().getName() : "";
+        if (!"VOLUNTEER".equals(roleName) && !"ADMIN".equals(roleName)) {
+            throw new RuntimeException("Permission denied: only VOLUNTEER or ADMIN can validate pickups");
+        }
 
         PickupValidation validation = new PickupValidation();
         validation.setOrder(order);
-        validation.setValidatedBy(volunteer);
+        validation.setValidatedBy(staff);
         validation.setValidatedAt(LocalDateTime.now());
         validation.setValidationMethod(validationMethod != null ? validationMethod : "QR_CODE");
         validation = pickupValidationRepository.save(validation);
@@ -167,11 +178,11 @@ public class OrderService {
         order.setStatus("PICKED_UP");
         orderRepository.save(order);
 
-        recordHistory(order, "PAID", "PICKED_UP", volunteer, "Picked up via " + validation.getValidationMethod());
+        recordHistory(order, "PAID", "PICKED_UP", staff, "Picked up via " + validation.getValidationMethod());
         return receipt;
     }
 
-    // 4. Cancelar pedido pendente pelo Admin e devolver estoque
+    // 4. Cancelar pedido pendente e devolver estoque (Restrito a ADMIN)
     @Transactional
     public Order cancelOrder(Long orderId, Long adminUserId, String justification) {
         Order order = orderRepository.findById(orderId)
@@ -181,7 +192,7 @@ public class OrderService {
             throw new RuntimeException("Only PENDING orders can be cancelled. Current status: " + order.getStatus());
         }
 
-        User admin = adminUserId != null ? userRepository.findById(adminUserId).orElse(null) : null;
+        User admin = verifyAdminPermission(adminUserId);
 
         restoreStock(order.getId());
 
@@ -194,7 +205,7 @@ public class OrderService {
         return order;
     }
 
-    // 5. Reembolsar pedido pago com justificativa e devolver estoque
+    // 5. Reembolsar pedido pago com justificativa e devolver estoque (Restrito a ADMIN)
     @Transactional
     public Order refundOrder(Long orderId, Long adminUserId, String justification) {
         Order order = orderRepository.findById(orderId)
@@ -208,7 +219,7 @@ public class OrderService {
             throw new RuntimeException("Justification is required for refunds");
         }
 
-        User admin = adminUserId != null ? userRepository.findById(adminUserId).orElse(null) : null;
+        User admin = verifyAdminPermission(adminUserId);
 
         restoreStock(order.getId());
 
@@ -234,6 +245,18 @@ public class OrderService {
             recordHistory(order, "PENDING", "EXPIRED", null, "15-minute reservation expired automatically");
             System.out.println("⏰ Pedido expirado e estoque devolvido: " + order.getOrderNumber());
         }
+    }
+
+    private User verifyAdminPermission(Long adminUserId) {
+        if (adminUserId == null) {
+            return null;
+        }
+        User user = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new RuntimeException("Admin user not found"));
+        if (user.getRole() == null || !"ADMIN".equals(user.getRole().getName())) {
+            throw new RuntimeException("Permission denied: only ADMIN can cancel or refund orders");
+        }
+        return user;
     }
 
     private void restoreStock(Long orderId) {
