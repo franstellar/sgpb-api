@@ -1,0 +1,198 @@
+
+<main class="faq-page">
+  <section class="faq-section" id="faq">
+    <div class="faq-container">
+
+      <div class="faq-intro">
+
+        <span class="faq-tag">
+          <span class="tag-dot"></span>
+          FAQ
+        </span>
+
+        <h1>Perguntas frequentes</h1>
+
+        <div class="faq-left-panel">
+
+          <div class="contact-card">
+
+            <div class="mascote-contact">
+              <img
+                src="/images/mascote-paelito.png"
+                alt="Mascote Paelito"
+                loading="lazy"
+              />
+            </div>
+
+            <h2>Ainda ficou com dúvida?</h2>
+
+            <div class="contact-links">
+
+              <a href="mailto:contato@paelito.org.br">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2"/>
+                  <path d="m3 7 9 6 9-6"/>
+                </svg>
+                contato@paelito.org.br
+              </a>
+
+              <a
+                href="https://wa.me/5511987654321"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg
+                  class="whatsapp-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M20.1 3.9A11.4 11.4 0 0 0 2.2 17.7L.8 23.2l5.6-1.5a11.4 11.4 0 0 0 5.4 1.4h.1A11.4 11.4 0 0 0 20.1 3.9ZM11.9 21a9.4 9.4 0 0 1-4.8-1.3l-.4-.2-3.3.9.9-3.2-.2-.4A9.4 9.4 0 1 1 11.9 21Z"/>
+                  <path d="M16.9 13.9c-.3-.2-1.8-.9-2.1-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.4.3-.6.1-.2 0-.4 0-.6-.1-.2-.7-1.7-.9-2.3-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.1 1.1-1.1 2.6s1.1 3 1.2 3.2c.2.2 2.2 3.4 5.3 4.7.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2.1-1.4.3-.7.3-1.3.2-1.4-.1-.1-.3-.2-.6-.4Z"/>
+                </svg>
+                (00) 0000-0000 (WhatsApp)
+              </a>
+
+            </div>
+
+          </div>
+
+          <div class="faq-question-area">
+
+            <div class="faq-question-heading">
+
+              <span class="question-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 20l1.2-5.3A8.4 8.4 0 1 1 21 11.5Z"/>
+                  <path d="M12 8v4"/>
+                  <path d="M12 15.5h.01"/>
+                </svg>
+              </span>
+
+              <h2>Não encontrou sua resposta?</h2>
+
+              <p>
+                Envie sua dúvida para nossa equipe. Teremos prazer em ajudar!
+              </p>
+
+            </div>
+
+            <form
+              class="faq-question-form"
+              (ngSubmit)="enviarDuvida()"
+            >
+
+              <label for="duvida">Escreva sua dúvida</label>
+
+              <textarea
+                id="duvida"
+                name="duvida"
+                [(ngModel)]="duvida"
+                placeholder="Digite sua dúvida..."
+                required
+              ></textarea>
+
+              <div class="question-form-footer">
+
+                <span>
+                  Responderemos pelo nosso canal de atendimento.
+                </span>
+
+                <button
+                  class="btn-enviar-duvida"
+                  type="submit"
+                  [disabled]="!duvida.trim()"
+                >
+                  Enviar dúvida
+
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14"/>
+                    <path d="m13 6 6 6-6 6"/>
+                  </svg>
+                </button>
+
+              </div>
+
+            </form>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="faq-list">
+
+        <article
+          class="faq-item"
+          *ngFor="let pergunta of perguntas; let i = index"
+          [class.active]="perguntaAberta === i"
+        >
+
+          <button
+            class="faq-question"
+            type="button"
+            [attr.aria-expanded]="perguntaAberta === i"
+            [attr.aria-controls]="'faq-answer-' + i"
+            (click)="alternarPergunta(i)"
+          >
+
+            <span>{{ pergunta.titulo }}</span>
+
+            <svg class="faq-arrow" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m7 10 5 5 5-5"/>
+            </svg>
+
+          </button>
+
+          <div
+            class="faq-answer"
+            [id]="'faq-answer-' + i"
+            [class.answer-open]="perguntaAberta === i"
+            [attr.aria-hidden]="perguntaAberta !== i"
+          >
+
+            <div class="faq-answer-inner">
+              <p>{{ pergunta.resposta }}</p>
+            </div>
+
+          </div>
+
+        </article>
+
+      </div>
+
+    </div>
+  </section>
+
+  <section class="faq-cta">
+
+    <div class="cta-content">
+
+      <span class="cta-decoration decoration-one"></span>
+      <span class="cta-decoration decoration-two"></span>
+
+      <h2>Bora garantir a sua?</h2>
+
+      <p>
+        Cada porção ajuda a transformar vidas.
+      </p>
+
+      <button
+        class="btn-baixar-app"
+        type="button"
+        (click)="realizarPedido()"
+      >
+
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="6" y="2" width="12" height="20" rx="2"/>
+          <path d="M11 18h2"/>
+        </svg>
+
+        <span>Baixar no Google Play</span>
+
+      </button>
+
+    </div>
+
+  </section>
+</main>
