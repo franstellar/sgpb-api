@@ -28,10 +28,13 @@ public class Order extends Auditable {
     private String orderNumber;
 
     @Column(nullable = false)
-    private String origin; // WEB, APP, PARTNER
+    private String origin; // WEB, APP, PARTNER, BALCAO
 
     @Column(nullable = false)
-    private String status; // PENDING, PAID, EXPIRED, CANCELLED, REFUNDED
+    private String status; // PENDING, PAID, PICKED_UP, EXPIRED, CANCELLED, REFUNDED
+
+    @Column(name = "donation_amount", precision = 10, scale = 2)
+    private BigDecimal donationAmount = BigDecimal.ZERO;
 
     @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;

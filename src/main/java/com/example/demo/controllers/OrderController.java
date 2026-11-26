@@ -2,18 +2,24 @@ package com.example.demo.controllers;
 
 import com.example.demo.models.Order;
 import com.example.demo.models.OrderItem;
+import com.example.demo.models.OrderStatusHistory;
 import com.example.demo.models.Payment;
 import com.example.demo.models.PickupReceipt;
+import com.example.demo.models.PickupValidation;
 import com.example.demo.repositories.OrderItemRepository;
 import com.example.demo.repositories.OrderRepository;
+import com.example.demo.repositories.OrderStatusHistoryRepository;
 import com.example.demo.repositories.PickupValidationRepository;
 import com.example.demo.services.OrderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -23,23 +29,27 @@ public class OrderController {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final PickupValidationRepository pickupValidationRepository;
+    private final OrderStatusHistoryRepository historyRepository;
 
     public OrderController(
             OrderService orderService,
             OrderRepository orderRepository,
             OrderItemRepository orderItemRepository,
-            PickupValidationRepository pickupValidationRepository
+            PickupValidationRepository pickupValidationRepository,
+            OrderStatusHistoryRepository historyRepository
     ) {
         this.orderService = orderService;
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.pickupValidationRepository = pickupValidationRepository;
+        this.historyRepository = historyRepository;
     }
 
     public record CreateOrderRequest(
             Long eventId,
             Long userId,
             String origin,
+            BigDecimal donationAmount,
             List<OrderService.OrderItemInput> items
     ) {}
 
@@ -62,6 +72,35 @@ public class OrderController {
         return orderItemRepository.findByOrderId(orderId);
     }
 
+    // Trilha de auditoria das mudanças de status do pedido
+    @GetMapping("/{orderId}/history")
+    public List<OrderStatusHistory> getOrderHistory(@PathVariable Long orderId) {
+        return historyRepository.findByOrderIdOrderByChangedAtDesc(orderId);
+    }
+
+    // Consulta completa por número do pedido para o Check-in (antes de confirmar entrega)
+    @GetMapping("/by-number/{orderNumber}")
+    public ResponseEntity<?> getOrderByNumber(@PathVariable String orderNumber) {
+        String cleanCode = orderNumber.trim().replace("#", "").toUpperCase();
+        Optional<Order> orderOpt = orderRepository.findByOrderNumber(cleanCode);
+
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Pedido não encontrado: " + cleanCode));
+        }
+
+        Order order = orderOpt.get();
+        List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+        Optional<PickupValidation> validationOpt = pickupValidationRepository.findByOrderId(order.getId());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("order", order);
+        response.put("items", items);
+        response.put("alreadyPickedUp", validationOpt.isPresent());
+        response.put("pickupValidation", validationOpt.orElse(null));
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping
     public ResponseEntity<?> createOrder(@RequestBody CreateOrderRequest request) {
         try {
@@ -69,6 +108,7 @@ public class OrderController {
                     request.eventId(),
                     request.userId(),
                     request.origin(),
+                    request.donationAmount(),
                     request.items()
             );
             return ResponseEntity.ok(order);
@@ -159,6 +199,10 @@ public class OrderController {
                 .map(Order::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        BigDecimal averageTicket = paidOrdersCount > 0
+                ? confirmedRevenue.divide(BigDecimal.valueOf(paidOrdersCount), 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
         int totalUnitsSold = allOrders.stream()
                 .filter(o -> "PAID".equals(o.getStatus()) || "PICKED_UP".equals(o.getStatus()))
                 .flatMap(o -> orderItemRepository.findByOrderId(o.getId()).stream())
@@ -168,12 +212,15 @@ public class OrderController {
         long pickupsCompleted = pickupValidationRepository.count();
         long remainingPickups = Math.max(0, paidOrdersCount - pickupsCompleted);
 
-        return Map.of(
-                "totalUnitsSold", totalUnitsSold,
-                "confirmedRevenue", confirmedRevenue,
-                "pendingOrders", pendingOrdersCount,
-                "completedPickups", pickupsCompleted,
-                "remainingPickups", remainingPickups
-        );
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("totalOrders", allOrders.size());
+        metrics.put("paidOrders", paidOrdersCount);
+        metrics.put("totalUnitsSold", totalUnitsSold);
+        metrics.put("confirmedRevenue", confirmedRevenue);
+        metrics.put("averageTicket", averageTicket);
+        metrics.put("pendingOrders", pendingOrdersCount);
+        metrics.put("completedPickups", pickupsCompleted);
+        metrics.put("remainingPickups", remainingPickups);
+        return metrics;
     }
 }

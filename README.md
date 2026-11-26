@@ -1,13 +1,13 @@
 cat << 'EOF' > README.md
 # 🥘 SGPB API — Sistema de Gestão da Paella Beneficente (ABADEUS)
 
-API RESTful desenvolvida em **Java 21** e **Spring Boot** para o gerenciamento centralizado de vendas, controle de estoque em tempo real, pagamentos via Pix e validação de retirada de pedidos da **Paella Beneficente ABADEUS**.
+API RESTful desenvolvida em **Java 25** e **Spring Boot** para o gerenciamento centralizado de vendas, controle de estoque em tempo real, pagamentos via Pix e validação de retirada de pedidos da **Paella Beneficente ABADEUS**.
 
 ---
 
 ## Tecnologias utilizadas
 
-* **Java 21**
+* **Java 25**
 * **Spring Boot** (Spring Web, Spring Data JPA, Spring Scheduling)
 * **PostgreSQL 16** (Containerizado via Docker Compose)
 * **Hibernate** (ORM e geração automática das 12 tabelas de domínio e auditoria)
@@ -30,7 +30,7 @@ API RESTful desenvolvida em **Java 21** e **Spring Boot** para o gerenciamento c
 
 ### Pré-requisitos
 * **Docker** e **Docker Compose** instalados
-* **JDK 21** (ou utilização do Maven Wrapper `./mvnw` incluso no projeto)
+* **JDK 25** (ou utilização do Maven Wrapper `./mvnw` incluso no projeto)
 
 ### Subir o banco de dados (PostgreSQL)
 Na raiz do projeto (`sgpb-api`), execute:

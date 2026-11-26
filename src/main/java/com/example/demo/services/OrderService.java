@@ -50,17 +50,31 @@ public class OrderService {
 
     // 1. Criar pedido, reservar estoque por 15 min (NF2.1) e gerar Pix Copia e Cola
     @Transactional
-    public Order createOrder(Long eventId, Long userId, String origin, List<OrderItemInput> items) {
+    public Order createOrder(
+            Long eventId,
+            Long userId,
+            String origin,
+            BigDecimal donationAmount,
+            List<OrderItemInput> items
+    ) {
+        if (items == null || items.isEmpty()) {
+            throw new RuntimeException("Order must contain at least one item");
+        }
+
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Se o pedido foi criado por um usuário PARTNER, marca a origem como PARTNER automaticamente
-        String resolvedOrigin = origin != null ? origin : "APP";
+        String resolvedOrigin = origin != null && !origin.isBlank() ? origin.toUpperCase() : "APP";
         if (user.getRole() != null && "PARTNER".equals(user.getRole().getName())) {
             resolvedOrigin = "PARTNER";
         }
+
+        BigDecimal safeDonation = (donationAmount != null && donationAmount.compareTo(BigDecimal.ZERO) > 0)
+                ? donationAmount
+                : BigDecimal.ZERO;
 
         Order order = new Order();
         order.setEvent(event);
@@ -68,15 +82,20 @@ public class OrderService {
         order.setOrderNumber("PAEL-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
         order.setOrigin(resolvedOrigin);
         order.setStatus("PENDING");
+        order.setDonationAmount(safeDonation);
         order.setTotalAmount(BigDecimal.ZERO);
         order.setExpiresAt(LocalDateTime.now().plusMinutes(15));
         order = orderRepository.save(order);
 
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal total = safeDonation;
 
         for (OrderItemInput itemInput : items) {
             Product product = productRepository.findById(itemInput.productId())
                     .orElseThrow(() -> new RuntimeException("Product not found"));
+
+            if (Boolean.FALSE.equals(product.getIsActive())) {
+                throw new RuntimeException("Product is currently paused: " + product.getName());
+            }
 
             if (product.getStockLimit() < itemInput.quantity()) {
                 throw new RuntimeException("Insufficient stock for product: " + product.getName());
@@ -110,9 +129,11 @@ public class OrderService {
     // 2. Confirmar pagamento de forma idempotente (NF1.2)
     @Transactional
     public Payment confirmPayment(Long orderId, String externalId, String method, String provider) {
-        var existingPayment = paymentRepository.findByExternalId(externalId);
-        if (existingPayment.isPresent()) {
-            return existingPayment.get();
+        if (externalId != null && !externalId.isBlank()) {
+            var existingPayment = paymentRepository.findByExternalId(externalId);
+            if (existingPayment.isPresent()) {
+                return existingPayment.get();
+            }
         }
 
         Order order = orderRepository.findById(orderId)
@@ -124,8 +145,10 @@ public class OrderService {
 
         Payment payment = new Payment();
         payment.setOrder(order);
-        payment.setExternalId(externalId);
-        payment.setMethod(method);
+        payment.setExternalId(externalId != null && !externalId.isBlank()
+                ? externalId
+                : "PAY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        payment.setMethod(method != null && !method.isBlank() ? method.toUpperCase() : "PIX");
         payment.setProvider(provider != null ? provider : "PIX_PROVIDER");
         payment.setAmount(order.getTotalAmount());
         payment.setStatus("CONFIRMED");
@@ -136,15 +159,17 @@ public class OrderService {
         order.setStatus("PAID");
         orderRepository.save(order);
 
-        recordHistory(order, oldStatus, "PAID", order.getUser(), "Confirmed via provider: " + externalId);
+        recordHistory(order, oldStatus, "PAID", order.getUser(), "Confirmed via provider: " + payment.getExternalId());
         return payment;
     }
 
     // 3. Validar retirada única por QR Code ou código manual (Apenas VOLUNTEER ou ADMIN)
     @Transactional
     public PickupReceipt validatePickup(String orderNumber, Long volunteerUserId, String validationMethod) {
-        Order order = orderRepository.findByOrderNumber(orderNumber)
-                .orElseThrow(() -> new RuntimeException("Order not found: " + orderNumber));
+        String cleanOrderNumber = orderNumber != null ? orderNumber.trim().replace("#", "").toUpperCase() : "";
+
+        Order order = orderRepository.findByOrderNumber(cleanOrderNumber)
+                .orElseThrow(() -> new RuntimeException("Order not found: " + cleanOrderNumber));
 
         if (!"PAID".equals(order.getStatus())) {
             throw new RuntimeException("Order is not PAID. Current status: " + order.getStatus());
