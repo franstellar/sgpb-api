@@ -1,185 +1,153 @@
-cat << 'EOF' > README.md
-# 🥘 SGPB API — Sistema de Gestão da Paella Beneficente (ABADEUS)
+# 🥘 SGPB API — Sistema de Gestão de Paella Beneficente (ABADEUS)
 
-API RESTful desenvolvida em **Java 25** e **Spring Boot** para o gerenciamento centralizado de vendas, controle de estoque em tempo real, pagamentos via Pix e validação de retirada de pedidos da **Paella Beneficente ABADEUS**.
+![Java](https://img.shields.io/badge/Java-17%2B-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.x-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-Frontend_Embutido-DD0031?style=for-the-badge&logo=angular&logoColor=white)
 
----
+Backend REST desenvolvido em **Java com Spring Boot** para o **Sistema de Gestão de Paella Beneficente (SGPB)**, criado para apoiar a **12ª Edição Solidária da Paella Beneficente ABADEUS** (Criciúma/SC — 28/11/2026).
 
-## Tecnologias utilizadas
-
-* **Java 25**
-* **Spring Boot** (Spring Web, Spring Data JPA, Spring Scheduling)
-* **PostgreSQL 16** (Containerizado via Docker Compose)
-* **Hibernate** (ORM e geração automática das 12 tabelas de domínio e auditoria)
-* **Lombok** (Redução de boilerplate)
-* **Maven** (Gerenciamento de dependências e build)
+Além de expor toda a API consumida pelo aplicativo mobile (`sgpb-app`), este repositório também embute o **site institucional em Angular**, servido diretamente pela pasta de recursos estáticos do Spring Boot (`src/main/resources/static`).
 
 ---
 
-## Regras de negócio & arquitetura
+## 📋 Índice
 
-1. **Reserva Temporária de Estoque (TTL de 15 minutos):** Ao criar um pedido (`PENDING`), o estoque do produto é reservado imediatamente e um código **Pix Copia e Cola (BRCode)** é gerado com validade de 15 minutos (`expiresAt`).
-2. **Expiração Automática (`@Scheduled`):** Um *worker* em segundo plano verifica a cada 60 segundos os pedidos pendentes vencidos, alterando o status para `EXPIRED` e devolvendo automaticamente as porções ao estoque disponível.
-3. **Confirmação de Pagamento Idempotente:** O endpoint de confirmação valida se o pedido já foi pago ou expirou, gerando o registro financeiro, o histórico de status e liberando o QR Code único de retirada.
-4. **Trava contra Retirada Duplicada (Anti-Fraude):** Na leitura do QR Code no dia do evento, o sistema valida se o pedido está `PAID` e bloqueia imediatamente qualquer tentativa de segunda retirada (`REDEEMED`), registrando o log de auditoria e o voluntário responsável.
-5. **Data Seeder Automático:** Ao subir a aplicação com o banco limpo, o `DataSeeder` popula automaticamente o Evento inicial, o 1º Lote, os 3 Produtos oficiais (*Paella Individual*, *Paella Familiar* e *Combo Especial* com fotos) e a credencial de Administrador.
+- [Arquitetura e Stack](#-arquitetura-e-stack)
+- [Regras de Negócio Implementadas](#-regras-de-negócio-implementadas)
+- [Endpoints da API](#-endpoints-da-api)
+- [Site Institucional Integrado](#-site-institucional-integrado)
+- [Como Executar](#-como-executar)
+- [Usuários de Teste (DataSeeder)](#-usuários-de-teste-dataseeder)
+- [Desenvolvimento e Build do Frontend Angular](#-desenvolvimento-e-build-do-frontend-angular)
 
 ---
 
-## Executar o projeto localmente
+## 🧱 Arquitetura e Stack
+
+| Camada | Tecnologia |
+| :--- | :--- |
+| **Backend** | Java 17+, Spring Boot, Spring Web, Spring Data JPA / Hibernate |
+| **Frontend Web (Embutido)** | Angular (build de produção servido via `src/main/resources/static`) |
+| **Integração Mobile** | API REST JSON consumida pelo app React Native / Expo (`sgpb-app`) |
+| **Carga Inicial** | `DataSeeder.java` (evento, cardápio e perfis de acesso) |
+
+---
+
+## ⚙️ Regras de Negócio Implementadas
+
+- **Reserva de Estoque com Expiração (15 min):** ao criar um pedido (`PENDING`), o estoque dos itens é reservado temporariamente. Caso o pagamento não seja confirmado dentro de 15 minutos, o pedido expira e os itens retornam automaticamente ao estoque disponível.
+- **Pagamento Idempotente:** a confirmação de pagamento (`POST /api/orders/{id}/pay`) garante consistência mesmo em caso de requisições duplicadas, alterando o status para `PAID`.
+- **Doação Pedagógica Adicional:** suporte ao campo `donationAmount` em `Order`, registrando contribuições extras separadamente do valor dos itens do cardápio.
+- **Controle de Concorrência e Dupla Retirada:** a validação de retirada (`/api/pickups/validate`) impede que um mesmo ingresso/pedido seja entregue mais de uma vez.
+- **Contingência Offline:** endpoints dedicados (`/api/pickups/sync-data` e `/api/pickups/sync-offline`) permitem que o aplicativo mobile opere com cache local em SQLite no dia do evento e sincronize as retiradas assim que a conexão retornar.
+- **Trilha de Auditoria:** todas as mudanças de status de um pedido são registradas em `OrderStatusHistory` e consultáveis via API.
+- **Cancelamento e Reembolso Auditados:** operações de reembolso exigem justificativa obrigatória registrada no histórico.
+- **Segurança de Autenticação:** trava automática de segurança após **5 tentativas inválidas consecutivas de login**.
+- **Controle de Cardápio e Lotes:** gerenciamento de produtos ativos/inativos (`isActive`), edição de preços, estoque e criação de lotes.
+
+---
+
+## 🔗 Endpoints da API
+
+Base URL local: `http://localhost:8080/api`
+
+### Autenticação e Equipe (`/api/auth`)
+| Método | Rota | Descrição |
+| :---: | :--- | :--- |
+| `POST` | `/api/auth/login` | Autentica usuário (com bloqueio após 5 falhas) |
+| `POST` | `/api/auth/register` | Cadastra novo apoiador (comprador) |
+| `GET` / `POST` | `/api/auth/staff` | Lista ou cadastra membros da equipe (Admin, Voluntário, Parceiro) |
+
+### Eventos, Cardápio e Lotes (`/api/events`)
+| Método | Rota | Descrição |
+| :---: | :--- | :--- |
+| `GET` | `/api/events/{eventId}/products` | Lista os produtos do cardápio do evento |
+| `PUT` | `/api/events/{eventId}` | Atualiza informações do evento |
+| `PUT` | `/api/events/products/{productId}` | Atualiza dados, preço e estoque de um produto |
+| `PATCH` | `/api/events/products/{productId}/toggle` | Ativa ou desativa um produto (`isActive`) |
+| `POST` | `/api/events/{eventId}/batches` | Cria um novo lote de vendas |
+
+### Pedidos e Dashboard (`/api/orders`)
+| Método | Rota | Descrição |
+| :---: | :--- | :--- |
+| `POST` | `/api/orders` | Cria pedido (`PENDING`) com reserva de estoque e `donationAmount` |
+| `GET` | `/api/orders` | Lista pedidos para gestão administrativa |
+| `GET` | `/api/orders/by-number/{orderNumber}` | Busca resumo do pedido pelo número (conferência pré-retirada) |
+| `GET` | `/api/orders/{orderId}/history` | Retorna trilha de auditoria (`OrderStatusHistory`) |
+| `POST` | `/api/orders/{id}/pay` | Confirma pagamento de forma idempotente (`PAID`) |
+| `POST` | `/api/orders/{id}/cancel` | Cancela pedido e estorna reserva de estoque |
+| `POST` | `/api/orders/{id}/refund` | Realiza reembolso mediante justificativa obrigatória |
+| `GET` | `/api/orders/dashboard` | Retorna indicadores financeiros e operacionais do evento |
+
+### Check-in e Sincronização Offline (`/api/pickups`)
+| Método | Rota | Descrição |
+| :---: | :--- | :--- |
+| `POST` | `/api/pickups/validate` | Valida e confirma a retirada do pedido (bloqueia dupla entrega) |
+| `GET` | `/api/pickups/sync-data` | Exporta pedidos pagos para cache offline (SQLite do app) |
+| `POST` | `/api/pickups/sync-offline` | Recebe e sincroniza retiradas realizadas offline |
+
+---
+
+## 🌐 Site Institucional Integrado
+
+O site institucional em **Angular** é servido diretamente na raiz da aplicação (`http://localhost:8080`) e contém:
+- Informações atualizadas da **12ª Edição Solidária** (28/11/2026 — Criciúma/SC).
+- Cardápio sincronizado com o backend.
+- Botão **BAIXE O APP!** no cabeçalho, que abre um modal com **QR Code dinâmico** e link direto para o build Android (Expo EAS) do aplicativo Paelito.
+
+---
+
+## 🚀 Como Executar
 
 ### Pré-requisitos
-* **Docker** e **Docker Compose** instalados
-* **JDK 25** (ou utilização do Maven Wrapper `./mvnw` incluso no projeto)
+- **Java JDK 17** ou superior
 
-### Subir o banco de dados (PostgreSQL)
-Na raiz do projeto (`sgpb-api`), execute:
-
+### Subir a aplicação
 ```bash
-docker compose up -d
-<div align="center">
+git clone <URL_DO_REPOSITORIO>
+cd sgpb-api
+./mvnw spring-boot:run
+```
 
-# 🍽️ SGPB — Sistema de Gestão de Projeto Beneficente
+> No Windows, utilize `mvnw.cmd spring-boot:run`.
 
-**Uma plataforma para organizar, divulgar e apoiar ações beneficentes.**
-
-Desenvolvido para o projeto ABADEUS.
-
-</div>
+Após a inicialização:
+- **Site institucional:** `http://localhost:8080`
+- **API REST:** `http://localhost:8080/api`
 
 ---
 
-## 📌 Sobre o projeto
+## 🔐 Usuários de Teste (DataSeeder)
 
-O **SGPB (Sistema de Gestão de Projeto Beneficente)** é uma aplicação desenvolvida para apoiar a organização e divulgação de eventos beneficentes, facilitando o acesso às informações do projeto, a visualização do cardápio e o acompanhamento das ações de arrecadação.
+Os usuários abaixo são criados automaticamente na inicialização da aplicação:
 
-O sistema busca oferecer uma experiência simples, intuitiva e acessível, conectando a comunidade às iniciativas promovidas pela ABADEUS.
+| Perfil | E-mail | Senha | Escopo |
+| :--- | :--- | :--- | :--- |
+| **Administrador** | `admin@abadeus.com.br` | `ADM123` | Dashboard, Pedidos, Reembolso, CSV, Estoque, Equipe e Check-in |
+| **Voluntário** | `voluntario@abadeus.com.br` | `VOL123` | Check-in de retirada e conferência de pedidos |
+| **Parceiro** | `parceiro@abadeus.com.br` | `PAR123` | Registro de vendas em ponto parceiro |
 
-## ✨ Funcionalidades
+---
 
-- **Página inicial:** apresentação do projeto e informações principais.
-- **Evento:** divulgação das informações relacionadas ao evento beneficente.
-- **ABADEUS:** apresentação da instituição e de sua iniciativa.
-- **Cardápio:** exibição dos produtos disponíveis, com descrições, ingredientes e valores.
-- **Arrecadação:** apresentação da meta e do progresso da campanha.
-- **FAQ:** seção de perguntas frequentes para orientar os visitantes.
-- **Contato:** informações e canais para comunicação.
+## 🛠️ Desenvolvimento e Build do Frontend Angular
 
-## 🛠️ Tecnologias utilizadas
+O build de produção já está versionado em `src/main/resources/static/`, não sendo necessário rodar o Angular separadamente para avaliar o projeto.
 
-| Tecnologia | Aplicação |
-|---|---|
-| Angular 21 | Desenvolvimento da aplicação frontend |
-| TypeScript | Lógica e tipagem da aplicação |
-| HTML5 | Estrutura das páginas |
-| SCSS | Estilização e responsividade |
-| Node.js / npm | Ambiente e gerenciamento de dependências |
-
-## 📁 Estrutura do projeto
-
-```text
-SgpbFrontend/
-│
-├── public/
-│   └── images/
-│
-├── src/
-│   ├── app/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── app.component.html
-│   │   ├── app.component.scss
-│   │   └── app.component.ts
-│   │
-│   ├── index.html
-│   ├── main.ts
-│   └── styles.scss
-│
-├── angular.json
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-## ⚙️ Pré-requisitos
-
-Antes de executar o projeto, certifique-se de ter instalado:
-
-- [Node.js](https://nodejs.org/)
-- npm (instalado junto com o Node.js)
-- [Angular CLI](https://angular.dev/tools/cli)
-
-Para verificar as versões instaladas:
-
-```bash
-node -v
-npm -v
-ng version
-```
-
-## 🚀 Como executar o projeto
-
-**1. Clone o repositório**
-
-```bash
-git clone URL_DO_REPOSITORIO
-```
-
-**2. Acesse a pasta do projeto**
-
-```bash
-cd SgpbFrontend
-```
-
-**3. Instale as dependências**
+Caso deseje alterar o site institucional em desenvolvimento:
 
 ```bash
 npm install
+npm start
 ```
 
-**4. Execute a aplicação**
+Para recompilar o frontend e atualizar os arquivos estáticos servidos pelo Spring Boot:
 
 ```bash
-ng serve
+rm -rf dist/ && npm run build && \
+rm -rf src/main/resources/static/* target/classes/static/* && \
+(cp -r dist/sgpb-frontend/browser/* src/main/resources/static/ 2>/dev/null || cp -r dist/sgpb-frontend/* src/main/resources/static/) && \
+cp -r src/main/resources/static/* target/classes/static/
 ```
-
-**5. Acesse no navegador**
-
-```text
-http://localhost:4200/
-```
-
-A aplicação será atualizada automaticamente durante o desenvolvimento sempre que alterações forem realizadas nos arquivos.
-
-## 🏗️ Build
-
-Para gerar a versão de produção:
-
-```bash
-ng build
-```
-
-Os arquivos compilados serão disponibilizados no diretório `dist/`.
-
-## 🧪 Testes
-
-Para executar os testes do projeto:
-
-```bash
-ng test
-```
-
-## 🎨 Identidade visual
-
-A interface utiliza uma identidade visual inspirada na proposta do projeto beneficente, com elementos acolhedores, cores quentes e componentes visuais que reforçam a comunicação da campanha.
-
-## 🤝 Projeto
-
-Desenvolvido como parte do **Projeto Paella Beneficente — ABADEUS**, com o objetivo de contribuir para a divulgação e organização da iniciativa.
-
----
-
-<div align="center">
 
 **Projeto Paella Beneficente | ABADEUS**
 
