@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -37,7 +38,7 @@ public class DataSeeder {
                 saveUser(userRepository, "Administrador ABADEUS", "admin@abadeus.com.br", "48999990000", "ADM123", adminRole);
                 saveUser(userRepository, "Voluntário Fila Drive-Thru", "voluntario@abadeus.com.br", "48999991111", "VOL123", volunteerRole);
                 saveUser(userRepository, "Parceiro Ponto de Venda", "parceiro@abadeus.com.br", "48999992222", "PAR123", partnerRole);
-                saveUser(userRepository, "Cliente", "cliente@email.com", "48998421082", "123456", buyerRole);
+                saveUser(userRepository, "Cliente", "cliente@email.com", "48999999999", "123456", buyerRole);
 
                 // 3. Criar Evento padrão
                 Event event = new Event();
@@ -51,7 +52,7 @@ public class DataSeeder {
                 event = eventRepository.save(event);
 
                 // 4. Criar os 17 Produtos alinhados ao App
-                List<Product> products = List.of(
+                List<Product> products = Arrays.asList(
                         // Paellas de frutos do mar (IDs 1..3)
                         saveProduct(productRepository, event, "Paella de frutos do mar (individual)", "Camarão, lula e mexilhão (450g)", "50.00", 200, null),
                         saveProduct(productRepository, event, "Paella de frutos do mar (2 pessoas)", "Camarão, lula e mexilhão (900g)", "95.00", 120, null),

@@ -2,7 +2,7 @@
 <header class="header">
   <div class="announcement">
     <p>
-      ⭐ 27ª Edição Solidária · Paella Beneficente · 27 de novembro na Abadeus - Criciúma/SC ⭐
+      ⭐ 12ª Edição Solidária · Paella Beneficente · 28 de novembro na Abadeus - Criciúma/SC ⭐
     </p>
   </div>
 
@@ -15,7 +15,7 @@
         >
       </a>
 
-      <a href="#aplicativo" class="download-button">
+      <a href="#aplicativo" class="download-button" (click)="abrirModalApp($event)">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="6" y="2" width="12" height="20" rx="2"/>
           <path d="M11 18h2"/>
@@ -51,8 +51,24 @@
           <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
         </svg>
 
-        <span>PEDIR PAELLA AGORA</span>
+        <span>PEÇA SUA PAELLA</span>
       </a>
     </div>
   </div>
 </header>
+
+@if (modalAppAberto) {
+  <div class="app-modal-backdrop" (click)="fecharModalApp()">
+    <div class="app-modal-card" (click)="$event.stopPropagation()">
+      <button type="button" class="app-modal-close" (click)="fecharModalApp()" aria-label="Fechar">✕</button>
+      <h3>Baixe o App Paelito</h3>
+      <p>Aponte a câmera do celular para o QR Code abaixo para acessar o app e acompanhar seu pedido.</p>
+      <div class="app-modal-qr">
+        <img [src]="qrCodeUrl" alt="QR Code para acessar o app Paelito" width="220" height="220" />
+      </div>
+      <a [href]="appUrl" target="_blank" rel="noopener noreferrer" class="app-modal-btn">
+        Abrir link no navegador
+      </a>
+    </div>
+  </div>
+}
